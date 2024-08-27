@@ -1,0 +1,19 @@
+http:
+  middlewares:
+    traefikoidc:
+      plugin:
+        traefikoidc:
+          providerURL: http://keycloak.test.localhost:8080/realms/Test1
+          clientID: nginx
+          clientSecret: xzwfZ9vzJBFntl0jiESPJGvRBj6UPpxT
+          callbackURL: /oauth2/callback
+          logoutURL: /oauth2/logout
+          scopes:
+            - openid
+            - email
+            - profile
+          sessionEncryptionKey: cYW8ox+3ySQZ5M+92hsZhnUqiQqM5U7B
+          forceHTTPS: false
+          logLevel: debug
+          rateLimit: 100
+          debug: true

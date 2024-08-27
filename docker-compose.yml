@@ -1,0 +1,85 @@
+services:
+  traefik:
+    image: traefik:v3.0
+    restart: always
+    command:
+      - "--api.insecure=true"
+      - "--providers.docker"
+      - "--providers.file.directory=/etc/traefik/config"
+      - "--log.level=TRACE"
+      - "--accesslog.filepath=/log/access.log"
+      - "--accesslog.format=json"
+      - "--accesslog.fields.defaultmode=keep"
+      - "--experimental.plugins.traefikoidc.modulename=github.com/lukaszraczylo/traefikoidc"
+      - "--experimental.plugins.traefikoidc.version=v0.2.9"
+    ports:
+      - "80:80"
+      - "8080:80"
+    networks:
+      web:
+        aliases:
+          - landing.test.localhost
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./log:/log
+      - ./traefik/:/etc/traefik/config
+    depends_on:
+      keycloak:
+        condition: service_healthy
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:latest
+    command:
+      - start-dev
+      - --health-enabled=true
+      - --import-realm
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin123
+      KC_HEALTH_ENABLED: "true"
+      KC_METRICS_ENABLED: "true"
+      KC_HOSTNAME: keycloak.test.localhost
+      KC_LOG_LEVEL: INFO
+      KC_HTTP_ACCESS_LOG_STREAM: /opt/keycloak/log/access.log
+    networks:
+      web:
+        aliases:
+          - keycloak.test.localhost
+    volumes:
+      - "./keycloak/initial.json:/opt/keycloak/data/import/realm.json"
+      - "./keycloak-log:/opt/keycloak/log"
+      - "./keycloak-health.sh:/keycloak-health.sh"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.keycloak.rule=Host(`keycloak.test.localhost`)"
+      - "traefik.http.services.keycloak.loadbalancer.server.port=8080"
+    ports:
+      - "8024:8024"
+      - "9000:9000"
+    healthcheck:
+      test: ["CMD", "/bin/sh", "-c", "/keycloak-health.sh"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  landing:
+    image: mendhak/http-https-echo
+    labels:
+      - "traefik.enable=true"
+      - "traefik.environment=localhost"
+      - "traefik.http.services.landing.loadbalancer.server.port=8082"
+      - "traefik.http.routers.landing.rule=Host(`landing.test.localhost`)"
+      - "traefik.http.routers.landing.middlewares=traefikoidc@file"
+    environment:
+      - HTTP_PORT=8082
+    ports:
+      - "8082:8082"
+    networks:
+      - web
+    depends_on:
+      keycloak:
+        condition: service_healthy
+
+networks:
+  web:
